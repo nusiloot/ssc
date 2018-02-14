@@ -1,0 +1,112 @@
+#!/bin/bash
+
+# Simple Screen Capture
+
+program_name_="ssc"
+
+function print_help() {
+  printf "$program_name_ - Captures screen\n"
+  printf "\n"
+  printf "SYNOPSYS\n"
+  printf "    $program_name_ [OPTIONS] \n"
+  printf "OPTIONS:\n"
+  printf "    -h|--help\n"
+  printf "        Print this help.\n"
+  printf "    -s|--no-sound source\n"
+  printf "        Disables the sound capture for {source}.\n"
+  printf "    --rtmp\n"
+  printf "        The output is rtmp stream.\n"
+  printf "    -o|--out {destination}\n"
+  printf "        The destination to output the video to (file, rtmp url, etc.).\n"
+  printf "    -a|--audio-device {device}\n"
+  printf "        The audio device.\n"
+  printf "    -v|--video_size {geometry}\n"
+  printf "        Video geometry (format: WxH). This is passed to ffmpeg's -s\n"
+  printf "        argument.\n"
+  printf "    -f|--offset {offset}\n"
+  printf "        Video offset of the display origin point (format: W,H).\n"
+}
+
+options='hv:c:s:f:o:a:' loptions='help,video-size:,rtmp,offset:,no-sound:,out:,audio-device:'
+getopt_out=$(getopt --name $program_name_ --options $options --longoptions $loptions -- "$@")
+if (( $? != 0 )); then exit 1; fi
+
+#sets the positionnal parameters with getopt's output
+eval set -- "$getopt_out"
+
+# default args
+video_size=$(xrandr -q | grep -m 1 -E "*\*\+" | gawk '{print $1}')
+video_offset=0,0
+out=out.mkv
+audio_device=1
+x11_options=
+while [[ $1 != "--" ]]; do
+  case "$1" in
+    -h|--help)
+      print_help
+      exit 0
+      ;;
+    -s|--no-sound)
+      nosound=$2
+      shift 2
+      ;;
+    -o|--out-file)
+      out="$2"
+      shift 2
+      ;;
+    -a|--audio-device)
+      audio_device=$2
+      shift 2
+      ;;
+    --rtmp)
+      rtmp=true
+      shift 1
+      ;;
+    -v|--video_size)
+      video_size=$2
+      shift 2
+      ;;
+    -f|--offset)
+      video_offset=$2
+      shift 2
+      ;;
+  esac
+done
+
+# shift away from the last positionnal parameter (--)
+shift
+
+FRAMERATE=25
+DISPLAY=:0.0
+VIN="${DISPLAY}+${video_offset}"
+AUDIO_MONITOR='alsa_output.pci-0000_00_1f.3.analog-stereo.monitor'
+
+
+# set flv container before output
+if test "${rtmp}"; then
+  out="-f flv ${out}"
+fi
+
+if [[ "$nosound" == "all" ]]; then
+  ffmpeg -f x11grab $x11_options -framerate $FRAMERATE -s $video_size -i $VIN -c:v libx264\
+    -preset "ultrafast" -qp 0 -y "$out"
+elif [[ "$nosound" == "monitor" ]]; then
+  ffmpeg \
+    -f x11grab $x11_options -framerate $FRAMERATE -s $video_size -i $VIN \
+    -f pulse -i $audio_device \
+    -map 0 -map 1 -c:v libx264 -preset "ultrafast" -c:a aac -y $out
+elif [[ "$nosound" == "device" ]]; then
+  ffmpeg \
+    -f x11grab $x11_options -framerate $FRAMERATE -s $video_size -i $VIN \
+    -f pulse -i "$AUDIO_MONITOR" \
+    -map 0 -map 1 -c:v libx264 -preset "ultrafast" -c:a aac -y $out
+else
+  ffmpeg \
+    -f x11grab $x11_options -framerate $FRAMERATE -s $video_size -i $VIN \
+    -f pulse -i $audio_device \
+    -f pulse -i "$AUDIO_MONITOR" -filter_complex amix \
+    -map 0 -map 1 -map 2 -c:v libx264 -preset "ultrafast" -c:a aac -y $out
+fi
+
+# vim:set et sw=2 ts=2 tw=120:
+
