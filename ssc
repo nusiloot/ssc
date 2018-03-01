@@ -83,31 +83,41 @@ DISPLAY=:0.0
 VIN="${DISPLAY}+${video_offset}"
 AUDIO_MONITOR='alsa_output.pci-0000_00_1f.3.analog-stereo.monitor'
 
-
 # set flv container before output
 if ${rtmp}; then
   out="-f flv ${out}"
 fi
 
+function ffmpeg_vinput() {
+  ffmpeg -f x11grab $x11_options -framerate $FRAMERATE -s $video_size -i $VIN \
+    "$@" \
+    -c:v libx264 -preset "ultrafast" -qp 0 -y $out
+}
+
+function ffmpeg_vinput_ainput() {
+  ffmpeg_vinput -f pulse -i $audio_device "$@"
+}
+
+function ffmpeg_vinput_amonitor() {
+  ffmpeg_vinput -f pulse -i "$AUDIO_MONITOR" "$@"
+}
+
+function ffmpeg_vinput_ainput_amonitor() {
+  ffmpeg_vinput_ainput -f pulse -i "$AUDIO_MONITOR" "$@"
+}
+
+function ffmpeg_vinput_ainput_amonitor_mix() {
+  ffmpeg_vinput_ainput_amonitor "$@" -map 0 -map 1 -map 2
+}
+
 if [[ "$nosound" == "all" ]]; then
-  ffmpeg -f x11grab $x11_options -framerate $FRAMERATE -s $video_size -i $VIN -c:v libx264\
-    -preset "ultrafast" -qp 0 -y "$out"
+  ffmpeg_vinput
 elif [[ "$nosound" == "monitor" ]]; then
-  ffmpeg \
-    -f x11grab $x11_options -framerate $FRAMERATE -s $video_size -i $VIN \
-    -f pulse -i $audio_device \
-    -map 0 -map 1 -c:v libx264 -preset "ultrafast" -c:a aac -y $out
+  ffmpeg_vinput_ainput -map 0 -map 1
 elif [[ "$nosound" == "device" ]]; then
-  ffmpeg \
-    -f x11grab $x11_options -framerate $FRAMERATE -s $video_size -i $VIN \
-    -f pulse -i "$AUDIO_MONITOR" \
-    -map 0 -map 1 -c:v libx264 -preset "ultrafast" -c:a aac -y $out
+  ffmpeg_vinput_amonitor -map 0 -map 1
 else
-  ffmpeg \
-    -f x11grab $x11_options -framerate $FRAMERATE -s $video_size -i $VIN \
-    -f pulse -i $audio_device \
-    -f pulse -i "$AUDIO_MONITOR" -filter_complex amix \
-    -map 0 -map 1 -map 2 -c:v libx264 -preset "ultrafast" -c:a aac -y $out
+    ffmpeg_vinput_ainput_amonitor_mix
 fi
 
 # vim:set et sw=2 ts=2 tw=120:
