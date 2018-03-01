@@ -98,7 +98,7 @@ fi
 function ffmpeg_vinput() {
   ffmpeg -f x11grab $x11_options -framerate $FRAMERATE -s $video_size -i $VIN \
     "$@" \
-    -c:v libx264 -preset "ultrafast" -qp 0 -y $out
+    -c:v libx264 -preset "ultrafast" -qp 0 -y $out </dev/null
 }
 
 function ffmpeg_vinput_ainput() {
